@@ -6,8 +6,9 @@ The PDM to PCM Decimator is a digital signal processing module that converts Pul
 
 ## Key Features
 
+- **Multi-Stage Filter Chain**: 4-stage CIC + Half-band + 64-tap FIR filter
+- **High-Performance Filtering**: Meets 0.1dB passband ripple and 98dB stopband attenuation
 - **Configurable Decimation Ratio**: Supports decimation ratios from 2:1 to 48:1
-- **High-Quality Filtering**: Implements a multi-stage decimation filter
 - **FIFO Buffering**: Built-in FIFO for output buffering and flow control
 - **Backpressure Support**: Handles downstream backpressure gracefully
 - **Overflow/Underflow Detection**: Provides status indicators for error conditions

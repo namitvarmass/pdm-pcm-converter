@@ -13,7 +13,11 @@ module tb_pdm_pcm_decimator;
 
     // Testbench parameters
     localparam int PDM_PCM_CONVERTER_DATA_WIDTH = 16;
-    localparam int PDM_PCM_CONVERTER_DECIMATION_RATIO = 16; // Updated to new range
+    localparam int PDM_PCM_CONVERTER_DECIMATION_RATIO = 16; // Total decimation ratio
+    localparam int PDM_PCM_CONVERTER_CIC_STAGES = 4;        // 4-stage CIC filter
+    localparam int PDM_PCM_CONVERTER_CIC_DECIMATION = 8;    // CIC decimation ratio
+    localparam int PDM_PCM_CONVERTER_HALFBAND_DECIMATION = 2; // Half-band decimation
+    localparam int PDM_PCM_CONVERTER_FIR_TAPS = 64;         // 64-tap FIR filter
     localparam int PDM_PCM_CONVERTER_FIFO_DEPTH = 16;
     localparam int CLOCK_PERIOD = 10; // 100MHz clock
     
@@ -49,6 +53,10 @@ module tb_pdm_pcm_decimator;
     pdm_pcm_decimator #(
         .PDM_PCM_CONVERTER_DATA_WIDTH(PDM_PCM_CONVERTER_DATA_WIDTH),
         .PDM_PCM_CONVERTER_DECIMATION_RATIO(PDM_PCM_CONVERTER_DECIMATION_RATIO),
+        .PDM_PCM_CONVERTER_CIC_STAGES(PDM_PCM_CONVERTER_CIC_STAGES),
+        .PDM_PCM_CONVERTER_CIC_DECIMATION(PDM_PCM_CONVERTER_CIC_DECIMATION),
+        .PDM_PCM_CONVERTER_HALFBAND_DECIMATION(PDM_PCM_CONVERTER_HALFBAND_DECIMATION),
+        .PDM_PCM_CONVERTER_FIR_TAPS(PDM_PCM_CONVERTER_FIR_TAPS),
         .PDM_PCM_CONVERTER_FIFO_DEPTH(PDM_PCM_CONVERTER_FIFO_DEPTH)
     ) dut (
         .clock_i(clock_i),

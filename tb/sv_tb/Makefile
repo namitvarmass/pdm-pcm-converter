@@ -19,7 +19,7 @@ TB_DIR = .
 WORK_DIR = work
 
 # Source files
-RTL_FILES = $(RTL_DIR)/pdm_pcm_decimator.sv
+RTL_FILES = $(RTL_DIR)/fir_coefficients.sv $(RTL_DIR)/pdm_pcm_decimator.sv
 TB_FILES = $(TB_DIR)/tb_pdm_pcm_decimator.sv
 TB_EXTENDED_FILES = $(TB_DIR)/tb_pdm_pcm_decimator_extended.sv
 
