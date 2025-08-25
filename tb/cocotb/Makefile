@@ -38,6 +38,10 @@ TEST_MODULE = test_pdm_pcm_decimator_core
 TOPLEVEL = pdm_pcm_decimator_core
 TOPLEVEL_LANG = verilog
 
+# Vyges test configurations
+VYGES_TEST_MODULE = test_pdm_pcm_decimator_vyges
+VYGES_TEST_NAME ?= vyges_test_reset_functionality
+
 # Coverage configuration
 COVERAGE_TYPE = all
 COVERAGE_OPTIONS = --coverage $(COVERAGE_TYPE)
@@ -69,9 +73,20 @@ help:
 	@echo "  waveform_view      - View waveforms"
 	@echo "  report             - Generate test report"
 	@echo ""
+	@echo "Vyges-compliant test targets:"
+	@echo "  vyges_test         - Run Vyges-compliant test (VYGES_TEST_NAME=<test_name>)"
+	@echo "  vyges_test_all     - Run all Vyges-compliant tests"
+	@echo "  vyges_test_functional - Run Vyges functional tests"
+	@echo "  vyges_test_performance - Run Vyges performance tests"
+	@echo "  vyges_test_coverage - Run Vyges coverage tests"
+	@echo "  vyges_test_stress  - Run Vyges stress tests"
+	@echo "  vyges_test_corner_cases - Run Vyges corner case tests"
+	@echo "  vyges_test_regression - Run Vyges regression tests"
+	@echo ""
 	@echo "Environment variables:"
 	@echo "  SIM                - Simulator (icarus, verilator, modelsim, xcelium)"
 	@echo "  TEST_NAME          - Specific test to run"
+	@echo "  VYGES_TEST_NAME    - Specific Vyges test to run"
 	@echo "  COVERAGE_TYPE      - Coverage type (all, line, branch, expression)"
 	@echo "  COCOTB_LOG_LEVEL   - Log level (DEBUG, INFO, WARNING, ERROR)"
 	@echo ""
@@ -80,6 +95,9 @@ help:
 	@echo "  make test_individual TEST_NAME=test_all_zeros_pattern"
 	@echo "  make test_coverage COVERAGE_TYPE=all"
 	@echo "  make test_waveforms"
+	@echo "  make vyges_test_all               # Run all Vyges tests"
+	@echo "  make vyges_test_functional        # Run Vyges functional tests"
+	@echo "  make vyges_test VYGES_TEST_NAME=vyges_test_reset_functionality"
 	@echo "============================================================================="
 
 # Create directories
@@ -212,6 +230,94 @@ test_individual: $(BUILD_DIR) $(REPORTS_DIR)
 # All tests target
 test: test_basic test_patterns test_performance test_errors test_state_machine
 	@echo "All tests completed!"
+
+# Vyges Testbench Targets
+vyges_test: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running Vyges-compliant tests..."
+	SIM=$(SIM) MODULE=$(VYGES_TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="$(VYGES_TEST_NAME)" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_vyges.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/vyges_tests.xml
+
+vyges_test_all: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running all Vyges-compliant tests..."
+	SIM=$(SIM) MODULE=$(VYGES_TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_vyges.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/vyges_all_tests.xml
+
+vyges_test_functional: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running Vyges functional tests..."
+	SIM=$(SIM) MODULE=$(VYGES_TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="vyges_test_reset_functionality|vyges_test_basic_functionality" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_vyges.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/vyges_functional_tests.xml
+
+vyges_test_performance: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running Vyges performance tests..."
+	SIM=$(SIM) MODULE=$(VYGES_TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="vyges_test_performance_throughput" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_vyges.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/vyges_performance_tests.xml
+
+vyges_test_coverage: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running Vyges coverage tests..."
+	SIM=$(SIM) MODULE=$(VYGES_TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="vyges_test_coverage_scenarios" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_vyges.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/vyges_coverage_tests.xml
+
+vyges_test_stress: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running Vyges stress tests..."
+	SIM=$(SIM) MODULE=$(VYGES_TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="vyges_test_stress_conditions" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_vyges.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/vyges_stress_tests.xml
+
+vyges_test_corner_cases: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running Vyges corner case tests..."
+	SIM=$(SIM) MODULE=$(VYGES_TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="vyges_test_corner_cases" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_vyges.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/vyges_corner_case_tests.xml
+
+vyges_test_regression: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running Vyges regression tests..."
+	SIM=$(SIM) MODULE=$(VYGES_TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="vyges_test_regression_suite" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_vyges.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/vyges_regression_tests.xml
 
 # Comprehensive test target
 test_comprehensive: $(BUILD_DIR) $(REPORTS_DIR)
