@@ -1,7 +1,8 @@
 #=============================================================================
-# PDM to PCM Decimator Core - Cocotb Test Makefile
+# PDM to PCM Decimator - Cocotb Testbench Makefile
 #=============================================================================
-# Description: Makefile for cocotb-based verification of PDM to PCM decimator
+# Description: Makefile for cocotb testbenches with comprehensive test cases
+#              Supports multiple simulators and test configurations
 # Author: Vyges IP Development Team
 # Date: 2025-08-25T13:26:01Z
 # License: Apache-2.0
@@ -9,62 +10,77 @@
 
 # Project configuration
 PROJECT_NAME = pdm_pcm_decimator
-DESIGN_NAME = pdm_pcm_decimator_core
 VERSION = 1.3.0
+DESIGN_NAME = pdm_pcm_decimator_core
 
 # Directory structure
 RTL_DIR = ../../rtl
 TB_DIR = .
-BUILD_DIR = ../../build/cocotb
-REPORTS_DIR = ../../reports/cocotb
-WAVEFORMS_DIR = ../../waveforms/cocotb
-
-# RTL files
-RTL_FILES = $(RTL_DIR)/fir_coefficients.sv \
-            $(RTL_DIR)/fifo_sync.sv \
-            $(RTL_DIR)/pdm_pcm_decimator_core.sv
-
-# Testbench files
-TB_FILES = $(TB_DIR)/test_pdm_pcm_decimator_core.py
+BUILD_DIR = build
+REPORTS_DIR = reports
+WAVEFORMS_DIR = waveforms
+COVERAGE_DIR = coverage
 
 # Cocotb configuration
+COCOTB_REDUCED_LOG_FMT = True
+COCOTB_ANSI_OUTPUT = True
+COCOTB_LOG_LEVEL = INFO
+
+# Simulator configurations
+SIM ?= icarus
+VERILOG_SOURCES = $(RTL_DIR)/fir_coefficients.sv \
+                  $(RTL_DIR)/fifo_sync.sv \
+                  $(RTL_DIR)/pdm_pcm_decimator_core.sv
+
+# Test configurations
+TEST_NAME ?= test_comprehensive_validation
+TEST_MODULE = test_pdm_pcm_decimator_core
 TOPLEVEL = pdm_pcm_decimator_core
 TOPLEVEL_LANG = verilog
-MODULE = test_pdm_pcm_decimator_core
-
-# Simulation tools
-SIM ?= icarus
-VERILOG_SOURCES = $(RTL_FILES)
-
-# Cocotb configuration
-export COCOTB_REDUCED_LOG_FMT=1
-export COCOTB_ANSI_OUTPUT=1
 
 # Coverage configuration
-COVERAGE ?= 0
-ifeq ($(COVERAGE),1)
-    export COCOTB_COVERAGE=1
-    COVERAGE_ARGS = --coverage
-endif
+COVERAGE_TYPE = all
+COVERAGE_OPTIONS = --coverage $(COVERAGE_TYPE)
 
 # Waveform configuration
-WAVES ?= 0
-ifeq ($(WAVES),1)
-    export COCOTB_ENABLE_PROFILING=1
-    WAVES_ARGS = --waves
-endif
+WAVEFORM_OPTIONS = --wave=waves.vcd
 
-# Verbose configuration
-VERBOSE ?= 0
-ifeq ($(VERBOSE),1)
-    VERBOSE_ARGS = -v
-endif
-
-# Test selection
-TEST_NAME ?= all
+# Performance configuration
+PERFORMANCE_OPTIONS = --profile
 
 # Default target
-all: sim
+all: help
+
+# Help target
+help:
+	@echo "============================================================================="
+	@echo "PDM to PCM Decimator - Cocotb Testbench Makefile"
+	@echo "============================================================================="
+	@echo "Available targets:"
+	@echo "  clean              - Clean build artifacts"
+	@echo "  test               - Run all tests"
+	@echo "  test_basic         - Run basic functionality tests"
+	@echo "  test_patterns      - Run pattern-based tests"
+	@echo "  test_performance   - Run performance tests"
+	@echo "  test_coverage      - Run tests with coverage"
+	@echo "  test_waveforms     - Run tests with waveform generation"
+	@echo "  test_individual    - Run individual test (TEST_NAME=<test_name>)"
+	@echo "  coverage_report    - Generate coverage report"
+	@echo "  waveform_view      - View waveforms"
+	@echo "  report             - Generate test report"
+	@echo ""
+	@echo "Environment variables:"
+	@echo "  SIM                - Simulator (icarus, verilator, modelsim, xcelium)"
+	@echo "  TEST_NAME          - Specific test to run"
+	@echo "  COVERAGE_TYPE      - Coverage type (all, line, branch, expression)"
+	@echo "  COCOTB_LOG_LEVEL   - Log level (DEBUG, INFO, WARNING, ERROR)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make test                          # Run all tests"
+	@echo "  make test_individual TEST_NAME=test_all_zeros_pattern"
+	@echo "  make test_coverage COVERAGE_TYPE=all"
+	@echo "  make test_waveforms"
+	@echo "============================================================================="
 
 # Create directories
 $(BUILD_DIR):
@@ -76,290 +92,281 @@ $(REPORTS_DIR):
 $(WAVEFORMS_DIR):
 	mkdir -p $(WAVEFORMS_DIR)
 
-# Simulation targets
-.PHONY: sim
-sim: $(BUILD_DIR) $(REPORTS_DIR)
-	@echo "Running cocotb simulation with $(SIM)..."
-	MODULE=$(MODULE) TOPLEVEL=$(TOPLEVEL) TOPLEVEL_LANG=$(TOPLEVEL_LANG) \
-	SIM=$(SIM) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
-	$(COVERAGE_ARGS) $(WAVES_ARGS) $(VERBOSE_ARGS) \
-	cocotb-run --sim-args="$(SIM_ARGS)" --test-name=$(TEST_NAME)
+$(COVERAGE_DIR):
+	mkdir -p $(COVERAGE_DIR)
 
-# Individual test targets
-.PHONY: test-reset
-test-reset: TEST_NAME=test_reset_sequence
-test-reset: sim
-
-.PHONY: test-zeros
-test-zeros: TEST_NAME=test_all_zeros_pattern
-test-zeros: sim
-
-.PHONY: test-ones
-test-ones: TEST_NAME=test_all_ones_pattern
-test-ones: sim
-
-.PHONY: test-alternating
-test-alternating: TEST_NAME=test_alternating_pattern
-test-alternating: sim
-
-.PHONY: test-random
-test-random: TEST_NAME=test_random_pattern
-test-random: sim
-
-.PHONY: test-backpressure
-test-backpressure: TEST_NAME=test_backpressure
-test-backpressure: sim
-
-.PHONY: test-overflow
-test-overflow: TEST_NAME=test_overflow_condition
-test-overflow: sim
-
-.PHONY: test-underflow
-test-underflow: TEST_NAME=test_underflow_condition
-test-underflow: sim
-
-.PHONY: test-sine
-test-sine: TEST_NAME=test_sine_wave_response
-test-sine: sim
-
-.PHONY: test-throughput
-test-throughput: TEST_NAME=test_performance_throughput
-test-throughput: sim
-
-.PHONY: test-state-machine
-test-state-machine: TEST_NAME=test_state_machine_coverage
-test-state-machine: sim
-
-.PHONY: test-parameters
-test-parameters: TEST_NAME=test_parameter_validation
-test-parameters: sim
-
-.PHONY: test-continuous
-test-continuous: TEST_NAME=test_continuous_operation
-test-continuous: sim
-
-# Tool-specific simulation targets
-.PHONY: sim-icarus
-sim-icarus: SIM=icarus
-sim-icarus: sim
-
-.PHONY: sim-verilator
-sim-verilator: SIM=verilator
-sim-verilator: sim
-
-.PHONY: sim-questa
-sim-questa: SIM=questa
-sim-questa: sim
-
-.PHONY: sim-modelsim
-sim-modelsim: SIM=modelsim
-sim-modelsim: sim
-
-.PHONY: sim-vcs
-sim-vcs: SIM=vcs
-sim-vcs: sim
-
-# Coverage targets
-.PHONY: coverage
-coverage: COVERAGE=1
-coverage: sim
-	@echo "Coverage report generated in $(BUILD_DIR)"
-
-.PHONY: coverage-html
-coverage-html: coverage
-	@echo "Generating HTML coverage report..."
-	coverage html -d $(REPORTS_DIR)/coverage_html
-
-.PHONY: coverage-xml
-coverage-xml: coverage
-	@echo "Generating XML coverage report..."
-	coverage xml -o $(REPORTS_DIR)/coverage.xml
-
-# Waveform targets
-.PHONY: waves
-waves: WAVES=1
-waves: sim
-	@echo "Waveform files generated in $(BUILD_DIR)"
-
-.PHONY: waves-gtkwave
-waves-gtkwave: waves
-	@echo "Opening GTKWave..."
-	gtkwave $(BUILD_DIR)/dump.vcd
-
-# Performance testing
-.PHONY: perf-test
-perf-test: TEST_NAME=test_performance_throughput
-perf-test: VERBOSE=1
-perf-test: sim
-
-# Regression testing
-.PHONY: regression
-regression: $(BUILD_DIR) $(REPORTS_DIR)
-	@echo "Running full regression test suite..."
-	@echo "Test 1: Reset sequence"
-	$(MAKE) test-reset
-	@echo "Test 2: All zeros pattern"
-	$(MAKE) test-zeros
-	@echo "Test 3: All ones pattern"
-	$(MAKE) test-ones
-	@echo "Test 4: Alternating pattern"
-	$(MAKE) test-alternating
-	@echo "Test 5: Random pattern"
-	$(MAKE) test-random
-	@echo "Test 6: Backpressure handling"
-	$(MAKE) test-backpressure
-	@echo "Test 7: Overflow condition"
-	$(MAKE) test-overflow
-	@echo "Test 8: Underflow condition"
-	$(MAKE) test-underflow
-	@echo "Test 9: Sine wave response"
-	$(MAKE) test-sine
-	@echo "Test 10: Performance throughput"
-	$(MAKE) test-throughput
-	@echo "Test 11: State machine coverage"
-	$(MAKE) test-state-machine
-	@echo "Test 12: Parameter validation"
-	$(MAKE) test-parameters
-	@echo "Test 13: Continuous operation"
-	$(MAKE) test-continuous
-	@echo "Regression test suite completed successfully!"
-
-# Quick test suite
-.PHONY: quick-test
-quick-test: $(BUILD_DIR) $(REPORTS_DIR)
-	@echo "Running quick test suite..."
-	$(MAKE) test-reset
-	$(MAKE) test-zeros
-	$(MAKE) test-ones
-	$(MAKE) test-random
-	$(MAKE) test-backpressure
-	@echo "Quick test suite completed!"
-
-# Stress testing
-.PHONY: stress-test
-stress-test: TEST_NAME=test_continuous_operation
-stress-test: VERBOSE=1
-stress-test: sim
-
-# Documentation targets
-.PHONY: test-report
-test-report: $(REPORTS_DIR)
-	@echo "Generating test report..."
-	@echo "=== PDM to PCM Decimator Core Test Report ===" > $(REPORTS_DIR)/test_report.txt
-	@echo "Date: $$(date)" >> $(REPORTS_DIR)/test_report.txt
-	@echo "Version: $(VERSION)" >> $(REPORTS_DIR)/test_report.txt
-	@echo "Design: $(DESIGN_NAME)" >> $(REPORTS_DIR)/test_report.txt
-	@echo "" >> $(REPORTS_DIR)/test_report.txt
-	@echo "Test Cases:" >> $(REPORTS_DIR)/test_report.txt
-	@echo "1. Reset sequence and initial state" >> $(REPORTS_DIR)/test_report.txt
-	@echo "2. All zeros pattern" >> $(REPORTS_DIR)/test_report.txt
-	@echo "3. All ones pattern" >> $(REPORTS_DIR)/test_report.txt
-	@echo "4. Alternating pattern" >> $(REPORTS_DIR)/test_report.txt
-	@echo "5. Random pattern" >> $(REPORTS_DIR)/test_report.txt
-	@echo "6. Backpressure handling" >> $(REPORTS_DIR)/test_report.txt
-	@echo "7. Overflow condition" >> $(REPORTS_DIR)/test_report.txt
-	@echo "8. Underflow condition" >> $(REPORTS_DIR)/test_report.txt
-	@echo "9. Sine wave frequency response" >> $(REPORTS_DIR)/test_report.txt
-	@echo "10. Performance throughput" >> $(REPORTS_DIR)/test_report.txt
-	@echo "11. State machine coverage" >> $(REPORTS_DIR)/test_report.txt
-	@echo "12. Parameter validation" >> $(REPORTS_DIR)/test_report.txt
-	@echo "13. Continuous operation" >> $(REPORTS_DIR)/test_report.txt
-	@echo "" >> $(REPORTS_DIR)/test_report.txt
-	@echo "Parameters:" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  Data Width: 16 bits" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  Decimation Ratio: 16" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  CIC Stages: 4" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  CIC Decimation: 8" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  Half-band Decimation: 2" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  FIR Taps: 64" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  FIFO Depth: 16" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  Clock Period: 10 ns (100 MHz)" >> $(REPORTS_DIR)/test_report.txt
-	@echo "" >> $(REPORTS_DIR)/test_report.txt
-	@echo "Performance Specifications:" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  Passband Ripple: 0.1 dB" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  Stopband Attenuation: 98 dB" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  Max Clock Frequency: 100 MHz" >> $(REPORTS_DIR)/test_report.txt
-	@echo "  Dynamic Range: 96 dB" >> $(REPORTS_DIR)/test_report.txt
-	@echo "Test report generated: $(REPORTS_DIR)/test_report.txt"
-
-# Clean targets
-.PHONY: clean
+# Clean target
 clean:
-	@echo "Cleaning cocotb build files..."
 	rm -rf $(BUILD_DIR)
-	rm -rf __pycache__
-	rm -rf *.pyc
-	rm -rf .pytest_cache
-	rm -rf .coverage
-	rm -rf htmlcov
-	rm -rf coverage.xml
-
-.PHONY: clean-all
-clean-all: clean
-	@echo "Cleaning all test artifacts..."
 	rm -rf $(REPORTS_DIR)
 	rm -rf $(WAVEFORMS_DIR)
+	rm -rf $(COVERAGE_DIR)
+	rm -f *.vcd
+	rm -f *.fst
+	rm -f *.log
+	rm -f results.xml
+	rm -f coverage.xml
+	rm -f *.pyc
+	rm -rf __pycache__
+	find . -name "*.pyc" -delete
+	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
-# Help target
-.PHONY: help
-help:
-	@echo "PDM to PCM Decimator Core - Cocotb Test Makefile"
-	@echo ""
-	@echo "Available targets:"
-	@echo "  sim                    - Run simulation with default settings"
-	@echo "  regression             - Run full regression test suite"
-	@echo "  quick-test             - Run quick test suite"
-	@echo "  stress-test            - Run stress testing"
-	@echo ""
-	@echo "Individual test targets:"
-	@echo "  test-reset             - Test reset sequence"
-	@echo "  test-zeros             - Test all zeros pattern"
-	@echo "  test-ones              - Test all ones pattern"
-	@echo "  test-alternating       - Test alternating pattern"
-	@echo "  test-random            - Test random pattern"
-	@echo "  test-backpressure      - Test backpressure handling"
-	@echo "  test-overflow          - Test overflow condition"
-	@echo "  test-underflow         - Test underflow condition"
-	@echo "  test-sine              - Test sine wave response"
-	@echo "  test-throughput        - Test performance throughput"
-	@echo "  test-state-machine     - Test state machine coverage"
-	@echo "  test-parameters        - Test parameter validation"
-	@echo "  test-continuous        - Test continuous operation"
-	@echo ""
-	@echo "Tool-specific targets:"
-	@echo "  sim-icarus             - Run with Icarus Verilog"
-	@echo "  sim-verilator          - Run with Verilator"
-	@echo "  sim-questa             - Run with Questa"
-	@echo "  sim-modelsim           - Run with ModelSim"
-	@echo "  sim-vcs                - Run with VCS"
-	@echo ""
-	@echo "Coverage targets:"
-	@echo "  coverage               - Run with coverage enabled"
-	@echo "  coverage-html          - Generate HTML coverage report"
-	@echo "  coverage-xml           - Generate XML coverage report"
-	@echo ""
-	@echo "Waveform targets:"
-	@echo "  waves                  - Run with waveform generation"
-	@echo "  waves-gtkwave          - Open GTKWave"
-	@echo ""
-	@echo "Documentation targets:"
-	@echo "  test-report            - Generate test report"
-	@echo ""
-	@echo "Clean targets:"
-	@echo "  clean                  - Clean build files"
-	@echo "  clean-all              - Clean all test artifacts"
-	@echo ""
-	@echo "Variables:"
-	@echo "  SIM                    - Simulation tool (default: icarus)"
-	@echo "  COVERAGE               - Enable coverage (0/1, default: 0)"
-	@echo "  WAVES                  - Enable waveforms (0/1, default: 0)"
-	@echo "  VERBOSE                - Enable verbose output (0/1, default: 0)"
-	@echo "  TEST_NAME              - Specific test to run (default: all)"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make sim COVERAGE=1 WAVES=1"
-	@echo "  make test-sine SIM=verilator"
-	@echo "  make regression VERBOSE=1"
+# Basic test target
+test_basic: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running basic functionality tests..."
+	SIM=$(SIM) MODULE=$(TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="test_reset_sequence|test_all_zeros_pattern|test_all_ones_pattern|test_alternating_pattern" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_core.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/basic_tests.xml
 
-# Include cocotb makefiles
-include $(shell cocotb-config --makefiles)/Makefile.sim 
+# Pattern tests target
+test_patterns: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running pattern-based tests..."
+	SIM=$(SIM) MODULE=$(TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="test_random_patterns|test_parameter_sweep|test_filter_response" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_core.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/pattern_tests.xml
+
+# Performance tests target
+test_performance: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running performance tests..."
+	SIM=$(SIM) MODULE=$(TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="test_performance_throughput|test_concurrent_operations" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_core.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/performance_tests.xml
+
+# Error condition tests target
+test_errors: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running error condition tests..."
+	SIM=$(SIM) MODULE=$(TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="test_backpressure|test_overflow_condition|test_underflow_condition|test_error_conditions" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_core.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/error_tests.xml
+
+# State machine tests target
+test_state_machine: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running state machine tests..."
+	SIM=$(SIM) MODULE=$(TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="test_state_machine_coverage" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_core.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/state_machine_tests.xml
+
+# Coverage tests target
+test_coverage: $(BUILD_DIR) $(REPORTS_DIR) $(COVERAGE_DIR)
+	@echo "Running tests with coverage..."
+	SIM=$(SIM) MODULE=$(TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	COVERAGE=$(COVERAGE_TYPE) \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_core.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/coverage_tests.xml \
+	--cov=$(TB_DIR) --cov-report=html:$(COVERAGE_DIR) --cov-report=xml:$(COVERAGE_DIR)/coverage.xml
+
+# Waveform tests target
+test_waveforms: $(BUILD_DIR) $(REPORTS_DIR) $(WAVEFORMS_DIR)
+	@echo "Running tests with waveform generation..."
+	SIM=$(SIM) MODULE=$(TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	WAVES=1 \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_core.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/waveform_tests.xml
+	@if [ -f waves.vcd ]; then mv waves.vcd $(WAVEFORMS_DIR)/; fi
+
+# Individual test target
+test_individual: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running individual test: $(TEST_NAME)"
+	SIM=$(SIM) MODULE=$(TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="$(TEST_NAME)" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_core.py::$(TEST_NAME) -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/individual_test.xml
+
+# All tests target
+test: test_basic test_patterns test_performance test_errors test_state_machine
+	@echo "All tests completed!"
+
+# Comprehensive test target
+test_comprehensive: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running comprehensive validation test..."
+	SIM=$(SIM) MODULE=$(TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=$(COCOTB_LOG_LEVEL) \
+	TEST_NAME="test_comprehensive_validation" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_core.py -v \
+	--tb=short --junitxml=$(REPORTS_DIR)/comprehensive_test.xml
+
+# Coverage report target
+coverage_report: $(COVERAGE_DIR)
+	@if [ -f $(COVERAGE_DIR)/coverage.xml ]; then \
+		echo "Generating coverage report..."; \
+		coverage report --show-missing; \
+		coverage html -d $(COVERAGE_DIR)/html; \
+		echo "Coverage report generated in $(COVERAGE_DIR)/html/"; \
+	else \
+		echo "No coverage data found. Run 'make test_coverage' first."; \
+	fi
+
+# Waveform view target
+waveform_view: $(WAVEFORMS_DIR)
+	@if [ -f $(WAVEFORMS_DIR)/waves.vcd ]; then \
+		echo "Opening waveform viewer..."; \
+		gtkwave $(WAVEFORMS_DIR)/waves.vcd; \
+	else \
+		echo "No waveform file found. Run 'make test_waveforms' first."; \
+	fi
+
+# Test report target
+report: $(REPORTS_DIR)
+	@echo "============================================================================="
+	@echo "PDM to PCM Decimator - Test Report"
+	@echo "============================================================================="
+	@echo "Project: $(PROJECT_NAME)"
+	@echo "Version: $(VERSION)"
+	@echo "Design: $(DESIGN_NAME)"
+	@echo "Simulator: $(SIM)"
+	@echo "Date: $(shell date)"
+	@echo ""
+	@if [ -f $(REPORTS_DIR)/basic_tests.xml ]; then \
+		echo "Basic Tests: ✓"; \
+	else \
+		echo "Basic Tests: ✗ (not run)"; \
+	fi
+	@if [ -f $(REPORTS_DIR)/pattern_tests.xml ]; then \
+		echo "Pattern Tests: ✓"; \
+	else \
+		echo "Pattern Tests: ✗ (not run)"; \
+	fi
+	@if [ -f $(REPORTS_DIR)/performance_tests.xml ]; then \
+		echo "Performance Tests: ✓"; \
+	else \
+		echo "Performance Tests: ✗ (not run)"; \
+	fi
+	@if [ -f $(REPORTS_DIR)/error_tests.xml ]; then \
+		echo "Error Tests: ✓"; \
+	else \
+		echo "Error Tests: ✗ (not run)"; \
+	fi
+	@if [ -f $(REPORTS_DIR)/state_machine_tests.xml ]; then \
+		echo "State Machine Tests: ✓"; \
+	else \
+		echo "State Machine Tests: ✗ (not run)"; \
+	fi
+	@if [ -f $(REPORTS_DIR)/comprehensive_test.xml ]; then \
+		echo "Comprehensive Test: ✓"; \
+	else \
+		echo "Comprehensive Test: ✗ (not run)"; \
+	fi
+	@echo ""
+	@echo "Reports available in: $(REPORTS_DIR)/"
+	@echo "Waveforms available in: $(WAVEFORMS_DIR)/"
+	@echo "Coverage available in: $(COVERAGE_DIR)/"
+	@echo "============================================================================="
+
+# Lint target
+lint:
+	@echo "Running linting checks..."
+	@if command -v verilator >/dev/null 2>&1; then \
+		verilator --lint-only $(VERILOG_SOURCES) --top-module $(TOPLEVEL); \
+	else \
+		echo "Verilator not found. Skipping linting."; \
+	fi
+
+# Format target
+format:
+	@echo "Formatting Python files..."
+	@if command -v black >/dev/null 2>&1; then \
+		black $(TB_DIR)/*.py; \
+	else \
+		echo "Black not found. Install with: pip install black"; \
+	fi
+
+# Install dependencies target
+install_deps:
+	@echo "Installing Python dependencies..."
+	pip install cocotb pytest pytest-cov coverage
+	@echo "Installing simulator dependencies..."
+	@if [ "$(SIM)" = "icarus" ]; then \
+		echo "Icarus Verilog should be installed via package manager"; \
+	elif [ "$(SIM)" = "verilator" ]; then \
+		echo "Verilator should be installed via package manager"; \
+	fi
+
+# CI/CD target
+ci: clean test_coverage test_waveforms report
+	@echo "CI/CD pipeline completed!"
+
+# Development target
+dev: clean test_basic test_waveforms
+	@echo "Development test completed!"
+
+# Performance benchmark target
+benchmark: $(BUILD_DIR) $(REPORTS_DIR)
+	@echo "Running performance benchmarks..."
+	SIM=$(SIM) MODULE=$(TEST_MODULE) TOPLEVEL=$(TOPLEVEL) \
+	TOPLEVEL_LANG=$(TOPLEVEL_LANG) VERILOG_SOURCES="$(VERILOG_SOURCES)" \
+	COCOTB_REDUCED_LOG_FMT=$(COCOTB_REDUCED_LOG_FMT) \
+	COCOTB_ANSI_OUTPUT=$(COCOTB_ANSI_OUTPUT) \
+	COCOTB_LOG_LEVEL=WARNING \
+	TEST_NAME="test_performance_throughput" \
+	python -m pytest $(TB_DIR)/test_pdm_pcm_decimator_core.py -v \
+	--tb=no --junitxml=$(REPORTS_DIR)/benchmark.xml
+
+# Regression test target
+regression: clean test test_coverage test_waveforms report
+	@echo "Regression test suite completed!"
+
+# Documentation target
+docs:
+	@echo "Generating test documentation..."
+	@echo "# PDM to PCM Decimator - Cocotb Testbench Documentation" > $(TB_DIR)/README.md
+	@echo "" >> $(TB_DIR)/README.md
+	@echo "## Overview" >> $(TB_DIR)/README.md
+	@echo "This directory contains comprehensive cocotb testbenches for the PDM to PCM decimator core." >> $(TB_DIR)/README.md
+	@echo "" >> $(TB_DIR)/README.md
+	@echo "## Test Categories" >> $(TB_DIR)/README.md
+	@echo "- Basic functionality tests" >> $(TB_DIR)/README.md
+	@echo "- Pattern-based tests" >> $(TB_DIR)/README.md
+	@echo "- Performance tests" >> $(TB_DIR)/README.md
+	@echo "- Error condition tests" >> $(TB_DIR)/README.md
+	@echo "- State machine tests" >> $(TB_DIR)/README.md
+	@echo "- Comprehensive validation" >> $(TB_DIR)/README.md
+	@echo "" >> $(TB_DIR)/README.md
+	@echo "## Usage" >> $(TB_DIR)/README.md
+	@echo "See the Makefile help for available targets." >> $(TB_DIR)/README.md
+	@echo "Documentation generated in $(TB_DIR)/README.md"
+
+# Phony targets
+.PHONY: all help clean test test_basic test_patterns test_performance test_errors \
+        test_state_machine test_coverage test_waveforms test_individual \
+        test_comprehensive coverage_report waveform_view report lint format \
+        install_deps ci dev benchmark regression docs 

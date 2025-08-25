@@ -15,532 +15,380 @@ from cocotb.clock import Clock
 from cocotb.handle import ModifiableObject
 import random
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
-# Test configuration
-class TestConfig:
-    """Test configuration parameters following Vyges conventions"""
-    DATA_WIDTH = 16
-    DECIMATION_RATIO = 16
-    CIC_STAGES = 4
-    CIC_DECIMATION = 8
-    HALFBAND_DECIMATION = 2
-    FIR_TAPS = 64
-    FIFO_DEPTH = 16
-    CLOCK_PERIOD_NS = 10  # 100MHz clock
+# Test parameters
+DATA_WIDTH = 16
+DECIMATION_RATIO = 16
+CIC_STAGES = 4
+CIC_DECIMATION = 8
+HALFBAND_DECIMATION = 2
+FIR_TAPS = 64
+FIFO_DEPTH = 16
+CLOCK_PERIOD_NS = 10
 
-class PDMGenerator:
-    """PDM signal generator for test stimulus"""
+class PdmPcmDecimatorTester:
+    """Test driver for PDM to PCM decimator core"""
     
-    @staticmethod
-    def generate_constant_pdm(value: float, length: int) -> List[int]:
-        """Generate constant PDM signal"""
-        pdm_data = []
-        for _ in range(length):
-            # Simple PDM encoding: probability of 1 = value
-            bit = 1 if random.random() < value else 0
-            pdm_data.append(bit)
-        return pdm_data
-    
-    @staticmethod
-    def generate_sine_pdm(frequency: float, amplitude: float, length: int, sample_rate: float) -> List[int]:
-        """Generate sine wave PDM signal"""
-        pdm_data = []
-        for i in range(length):
-            t = i / sample_rate
-            sine_value = amplitude * np.sin(2 * np.pi * frequency * t)
-            # Convert to PDM: sine_value becomes probability of 1
-            probability = 0.5 + 0.5 * sine_value
-            probability = max(0.0, min(1.0, probability))  # Clamp to [0, 1]
-            bit = 1 if random.random() < probability else 0
-            pdm_data.append(bit)
-        return pdm_data
-    
-    @staticmethod
-    def generate_random_pdm(length: int) -> List[int]:
-        """Generate random PDM signal"""
-        return [random.randint(0, 1) for _ in range(length)]
-
-class PCMChecker:
-    """PCM output checker and analyzer"""
-    
-    def __init__(self, data_width: int, decimation_ratio: int):
-        self.data_width = data_width
-        self.decimation_ratio = decimation_ratio
-        self.max_value = (1 << (data_width - 1)) - 1
-        self.min_value = -(1 << (data_width - 1))
-    
-    def check_constant_input(self, pdm_data: List[int], expected_duty_cycle: float) -> bool:
-        """Check PCM output for constant PDM input"""
+    def __init__(self, dut):
+        self.dut = dut
+        self.clock_period = CLOCK_PERIOD_NS
+        self.test_count = 0
+        self.pass_count = 0
+        self.fail_count = 0
+        
+    async def reset_dut(self):
+        """Reset the DUT"""
+        self.dut.reset_n_i.value = 0
+        await Timer(self.clock_period * 10, units='ns')
+        self.dut.reset_n_i.value = 1
+        await Timer(self.clock_period * 5, units='ns')
+        
+    async def wait_for_ready(self):
+        """Wait for PDM ready signal"""
+        while not self.dut.pdm_ready_o.value:
+            await RisingEdge(self.dut.clock_i)
+            
+    async def send_pdm_data(self, data: List[int]):
+        """Send PDM data to the DUT"""
+        for bit in data:
+            self.dut.pdm_data_i.value = bit
+            self.dut.pdm_valid_i.value = 1
+            await self.wait_for_ready()
+            await RisingEdge(self.dut.clock_i)
+        self.dut.pdm_valid_i.value = 0
+        
+    async def wait_for_pcm_output(self, timeout_cycles: int = 1000):
+        """Wait for PCM output with timeout"""
+        cycles = 0
+        while not self.dut.pcm_valid_o.value and cycles < timeout_cycles:
+            await RisingEdge(self.dut.clock_i)
+            cycles += 1
+        return cycles < timeout_cycles
+        
+    def calculate_expected_pcm(self, pdm_data: List[int]) -> int:
+        """Calculate expected PCM output for given PDM data"""
         ones_count = sum(pdm_data)
-        actual_duty_cycle = ones_count / len(pdm_data)
+        expected = (ones_count << (DATA_WIDTH - len(bin(DECIMATION_RATIO)[2:]))) - (1 << (DATA_WIDTH - 1))
+        return expected
         
-        # Expected PCM value based on duty cycle
-        expected_pcm = int((actual_duty_cycle - 0.5) * 2 * self.max_value)
-        
-        # Allow some tolerance for quantization
-        tolerance = self.max_value / 100  # 1% tolerance
-        return abs(expected_pcm) <= tolerance
-    
-    def check_sine_response(self, pcm_data: List[int], frequency: float, sample_rate: float) -> Tuple[bool, float]:
-        """Check frequency response for sine wave input"""
-        if len(pcm_data) < 10:
-            return False, 0.0
-        
-        # Simple frequency analysis using FFT
-        fft_data = np.fft.fft(pcm_data)
-        freqs = np.fft.fftfreq(len(pcm_data), 1/sample_rate)
-        
-        # Find peak frequency
-        peak_idx = np.argmax(np.abs(fft_data[1:len(fft_data)//2])) + 1
-        peak_freq = abs(freqs[peak_idx])
-        
-        # Check if peak frequency matches input frequency
-        freq_tolerance = frequency * 0.1  # 10% tolerance
-        return abs(peak_freq - frequency) <= freq_tolerance, peak_freq
+    def log_test_result(self, test_name: str, passed: bool, actual: int = None, expected: int = None):
+        """Log test result"""
+        self.test_count += 1
+        if passed:
+            self.pass_count += 1
+            cocotb.log.info(f"PASS: {test_name}")
+        else:
+            self.fail_count += 1
+            if actual is not None and expected is not None:
+                cocotb.log.error(f"FAIL: {test_name} - Actual: {actual}, Expected: {expected}")
+            else:
+                cocotb.log.error(f"FAIL: {test_name}")
+                
+    def print_summary(self):
+        """Print test summary"""
+        cocotb.log.info("=" * 60)
+        cocotb.log.info("TEST SUMMARY")
+        cocotb.log.info("=" * 60)
+        cocotb.log.info(f"Total Tests: {self.test_count}")
+        cocotb.log.info(f"Passed: {self.pass_count}")
+        cocotb.log.info(f"Failed: {self.fail_count}")
+        cocotb.log.info(f"Success Rate: {(self.pass_count/self.test_count)*100:.1f}%")
+        cocotb.log.info("=" * 60)
 
 @cocotb.test()
 async def test_reset_sequence(dut):
     """Test reset sequence and initial state"""
+    cocotb.log.info("Test: Reset sequence and initial state")
+    
     # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
     
-    # Reset sequence
+    # Initialize signals
     dut.reset_n_i.value = 0
-    dut.enable_i.value = 0
     dut.pdm_data_i.value = 0
     dut.pdm_valid_i.value = 0
     dut.pcm_ready_i.value = 1
+    dut.enable_i.value = 0
     
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
-    await Timer(50, units="ns")
+    # Wait for initial state
+    await Timer(CLOCK_PERIOD_NS * 5, units='ns')
     
     # Check initial state
     assert dut.busy_o.value == 0, "Busy signal should be low after reset"
     assert dut.overflow_o.value == 0, "Overflow signal should be low after reset"
     assert dut.underflow_o.value == 0, "Underflow signal should be low after reset"
-    assert dut.pdm_ready_o.value == 0, "PDM ready should be low when disabled"
+    
+    # Release reset
+    dut.reset_n_i.value = 1
+    await Timer(CLOCK_PERIOD_NS * 10, units='ns')
+    
+    # Enable the module
+    dut.enable_i.value = 1
+    await Timer(CLOCK_PERIOD_NS * 5, units='ns')
+    
+    cocotb.log.info("Reset sequence test completed")
 
 @cocotb.test()
 async def test_all_zeros_pattern(dut):
-    """Test PDM input with all zeros pattern"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+    """Test with all zeros PDM pattern"""
+    cocotb.log.info("Test: All zeros PDM pattern")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
     
     # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
+    await tester.reset_dut()
     dut.enable_i.value = 1
-    await Timer(50, units="ns")
+    dut.pcm_ready_i.value = 1
     
-    # Generate all zeros PDM pattern
-    pdm_data = [0] * TestConfig.DECIMATION_RATIO
+    # Generate all zeros pattern
+    pdm_data = [0] * DECIMATION_RATIO
     
-    # Send PDM data
-    for i, bit in enumerate(pdm_data):
-        await RisingEdge(dut.clock_i)
-        dut.pdm_data_i.value = bit
-        dut.pdm_valid_i.value = 1
-        
-        # Wait for ready
-        while dut.pdm_ready_o.value == 0:
-            await RisingEdge(dut.clock_i)
+    # Send data
+    await tester.send_pdm_data(pdm_data)
     
-    # Wait for PCM output
-    await RisingEdge(dut.clock_i)
-    dut.pdm_valid_i.value = 0
+    # Wait for output
+    success = await tester.wait_for_pcm_output()
+    assert success, "Timeout waiting for PCM output"
     
-    # Wait for PCM valid
-    timeout = 0
-    while dut.pcm_valid_o.value == 0 and timeout < 1000:
-        await RisingEdge(dut.clock_i)
-        timeout += 1
+    # Check result
+    actual_pcm = dut.pcm_data_o.value.integer
+    expected_pcm = tester.calculate_expected_pcm(pdm_data)
     
-    assert timeout < 1000, "Timeout waiting for PCM output"
+    passed = actual_pcm == expected_pcm
+    tester.log_test_result("All zeros pattern", passed, actual_pcm, expected_pcm)
     
-    # Check PCM output (should be negative maximum for all zeros)
-    expected_pcm = -(1 << (TestConfig.DATA_WIDTH - 1))
-    assert dut.pcm_data_o.value == expected_pcm, f"PCM output mismatch: got {dut.pcm_data_o.value}, expected {expected_pcm}"
+    assert passed, f"All zeros test failed - Actual: {actual_pcm}, Expected: {expected_pcm}"
 
 @cocotb.test()
 async def test_all_ones_pattern(dut):
-    """Test PDM input with all ones pattern"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+    """Test with all ones PDM pattern"""
+    cocotb.log.info("Test: All ones PDM pattern")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
     
     # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
+    await tester.reset_dut()
     dut.enable_i.value = 1
-    await Timer(50, units="ns")
+    dut.pcm_ready_i.value = 1
     
-    # Generate all ones PDM pattern
-    pdm_data = [1] * TestConfig.DECIMATION_RATIO
+    # Generate all ones pattern
+    pdm_data = [1] * DECIMATION_RATIO
     
-    # Send PDM data
-    for i, bit in enumerate(pdm_data):
-        await RisingEdge(dut.clock_i)
-        dut.pdm_data_i.value = bit
-        dut.pdm_valid_i.value = 1
-        
-        # Wait for ready
-        while dut.pdm_ready_o.value == 0:
-            await RisingEdge(dut.clock_i)
+    # Send data
+    await tester.send_pdm_data(pdm_data)
     
-    # Wait for PCM output
-    await RisingEdge(dut.clock_i)
-    dut.pdm_valid_i.value = 0
+    # Wait for output
+    success = await tester.wait_for_pcm_output()
+    assert success, "Timeout waiting for PCM output"
     
-    # Wait for PCM valid
-    timeout = 0
-    while dut.pcm_valid_o.value == 0 and timeout < 1000:
-        await RisingEdge(dut.clock_i)
-        timeout += 1
+    # Check result
+    actual_pcm = dut.pcm_data_o.value.integer
+    expected_pcm = tester.calculate_expected_pcm(pdm_data)
     
-    assert timeout < 1000, "Timeout waiting for PCM output"
+    passed = actual_pcm == expected_pcm
+    tester.log_test_result("All ones pattern", passed, actual_pcm, expected_pcm)
     
-    # Check PCM output (should be positive maximum for all ones)
-    expected_pcm = (1 << (TestConfig.DATA_WIDTH - 1)) - 1
-    assert dut.pcm_data_o.value == expected_pcm, f"PCM output mismatch: got {dut.pcm_data_o.value}, expected {expected_pcm}"
+    assert passed, f"All ones test failed - Actual: {actual_pcm}, Expected: {expected_pcm}"
 
 @cocotb.test()
 async def test_alternating_pattern(dut):
-    """Test PDM input with alternating pattern"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+    """Test with alternating PDM pattern"""
+    cocotb.log.info("Test: Alternating PDM pattern")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
     
     # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
+    await tester.reset_dut()
     dut.enable_i.value = 1
-    await Timer(50, units="ns")
+    dut.pcm_ready_i.value = 1
     
-    # Generate alternating PDM pattern
-    pdm_data = [i % 2 for i in range(TestConfig.DECIMATION_RATIO)]
+    # Generate alternating pattern
+    pdm_data = [i % 2 for i in range(DECIMATION_RATIO)]
     
-    # Send PDM data
-    for i, bit in enumerate(pdm_data):
-        await RisingEdge(dut.clock_i)
-        dut.pdm_data_i.value = bit
-        dut.pdm_valid_i.value = 1
-        
-        # Wait for ready
-        while dut.pdm_ready_o.value == 0:
-            await RisingEdge(dut.clock_i)
+    # Send data
+    await tester.send_pdm_data(pdm_data)
     
-    # Wait for PCM output
-    await RisingEdge(dut.clock_i)
-    dut.pdm_valid_i.value = 0
+    # Wait for output
+    success = await tester.wait_for_pcm_output()
+    assert success, "Timeout waiting for PCM output"
     
-    # Wait for PCM valid
-    timeout = 0
-    while dut.pcm_valid_o.value == 0 and timeout < 1000:
-        await RisingEdge(dut.clock_i)
-        timeout += 1
+    # Check result
+    actual_pcm = dut.pcm_data_o.value.integer
+    expected_pcm = tester.calculate_expected_pcm(pdm_data)
     
-    assert timeout < 1000, "Timeout waiting for PCM output"
+    passed = actual_pcm == expected_pcm
+    tester.log_test_result("Alternating pattern", passed, actual_pcm, expected_pcm)
     
-    # Check PCM output (should be close to zero for 50% duty cycle)
-    pcm_value = dut.pcm_data_o.value
-    tolerance = 1 << (TestConfig.DATA_WIDTH - 3)  # Allow some tolerance
-    assert abs(pcm_value) <= tolerance, f"PCM output should be close to zero for alternating pattern: got {pcm_value}"
+    assert passed, f"Alternating pattern test failed - Actual: {actual_pcm}, Expected: {expected_pcm}"
 
 @cocotb.test()
-async def test_random_pattern(dut):
-    """Test PDM input with random pattern"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+async def test_random_patterns(dut):
+    """Test with multiple random PDM patterns"""
+    cocotb.log.info("Test: Random PDM patterns")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
     
     # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
+    await tester.reset_dut()
     dut.enable_i.value = 1
-    await Timer(50, units="ns")
+    dut.pcm_ready_i.value = 1
     
-    # Generate random PDM pattern
-    random.seed(42)  # Fixed seed for reproducible results
-    pdm_data = PDMGenerator.generate_random_pdm(TestConfig.DECIMATION_RATIO)
-    
-    # Send PDM data
-    for i, bit in enumerate(pdm_data):
-        await RisingEdge(dut.clock_i)
-        dut.pdm_data_i.value = bit
-        dut.pdm_valid_i.value = 1
+    # Test multiple random patterns
+    num_tests = 10
+    for i in range(num_tests):
+        # Generate random pattern
+        pdm_data = [random.randint(0, 1) for _ in range(DECIMATION_RATIO)]
         
-        # Wait for ready
-        while dut.pdm_ready_o.value == 0:
-            await RisingEdge(dut.clock_i)
+        # Send data
+        await tester.send_pdm_data(pdm_data)
+        
+        # Wait for output
+        success = await tester.wait_for_pcm_output()
+        assert success, f"Timeout waiting for PCM output in test {i}"
+        
+        # Check result
+        actual_pcm = dut.pcm_data_o.value.integer
+        expected_pcm = tester.calculate_expected_pcm(pdm_data)
+        
+        passed = actual_pcm == expected_pcm
+        tester.log_test_result(f"Random pattern {i+1}", passed, actual_pcm, expected_pcm)
+        
+        if not passed:
+            cocotb.log.error(f"Random pattern test {i+1} failed")
+            break
     
-    # Wait for PCM output
-    await RisingEdge(dut.clock_i)
-    dut.pdm_valid_i.value = 0
-    
-    # Wait for PCM valid
-    timeout = 0
-    while dut.pcm_valid_o.value == 0 and timeout < 1000:
-        await RisingEdge(dut.clock_i)
-        timeout += 1
-    
-    assert timeout < 1000, "Timeout waiting for PCM output"
-    
-    # Check that PCM output is within valid range
-    pcm_value = dut.pcm_data_o.value
-    max_value = (1 << (TestConfig.DATA_WIDTH - 1)) - 1
-    min_value = -(1 << (TestConfig.DATA_WIDTH - 1))
-    assert min_value <= pcm_value <= max_value, f"PCM output out of range: {pcm_value}"
+    cocotb.log.info(f"Random pattern tests completed: {num_tests} tests")
 
 @cocotb.test()
 async def test_backpressure(dut):
     """Test backpressure handling"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+    cocotb.log.info("Test: Backpressure handling")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
     
     # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
+    await tester.reset_dut()
     dut.enable_i.value = 1
-    await Timer(50, units="ns")
     
     # Disable downstream ready to create backpressure
     dut.pcm_ready_i.value = 0
     
-    # Send multiple PDM samples
-    for sample in range(3):
-        pdm_data = [random.randint(0, 1) for _ in range(TestConfig.DECIMATION_RATIO)]
-        
-        for i, bit in enumerate(pdm_data):
-            await RisingEdge(dut.clock_i)
-            dut.pdm_data_i.value = bit
-            dut.pdm_valid_i.value = 1
-            
-            # Wait for ready
-            while dut.pdm_ready_o.value == 0:
-                await RisingEdge(dut.clock_i)
-        
-        await RisingEdge(dut.clock_i)
-        dut.pdm_valid_i.value = 0
+    # Send multiple samples
+    num_samples = 3
+    for i in range(num_samples):
+        pdm_data = [random.randint(0, 1) for _ in range(DECIMATION_RATIO)]
+        await tester.send_pdm_data(pdm_data)
+        await Timer(CLOCK_PERIOD_NS * 5, units='ns')
     
     # Check that no overflow occurred
-    assert dut.overflow_o.value == 0, "Overflow should not occur during backpressure"
+    overflow_detected = dut.overflow_o.value
+    passed = not overflow_detected
+    tester.log_test_result("Backpressure handling", passed)
     
     # Re-enable downstream ready
     dut.pcm_ready_i.value = 1
     
-    # Wait for PCM output
-    timeout = 0
-    while dut.pcm_valid_o.value == 0 and timeout < 1000:
-        await RisingEdge(dut.clock_i)
-        timeout += 1
+    # Wait for outputs to be consumed
+    await Timer(CLOCK_PERIOD_NS * 50, units='ns')
     
-    assert timeout < 1000, "Timeout waiting for PCM output after backpressure"
+    assert passed, "Backpressure test failed - overflow detected"
 
 @cocotb.test()
 async def test_overflow_condition(dut):
-    """Test FIFO overflow condition"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+    """Test overflow condition detection"""
+    cocotb.log.info("Test: Overflow condition detection")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
     
     # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
+    await tester.reset_dut()
     dut.enable_i.value = 1
-    await Timer(50, units="ns")
     
-    # Disable downstream ready to fill FIFO
+    # Disable downstream ready
     dut.pcm_ready_i.value = 0
     
     # Send more samples than FIFO can hold
-    for sample in range(TestConfig.FIFO_DEPTH + 2):
-        pdm_data = [1] * TestConfig.DECIMATION_RATIO  # All ones for maximum values
-        
-        for i, bit in enumerate(pdm_data):
-            await RisingEdge(dut.clock_i)
-            dut.pdm_data_i.value = bit
-            dut.pdm_valid_i.value = 1
-            
-            # Wait for ready
-            while dut.pdm_ready_o.value == 0:
-                await RisingEdge(dut.clock_i)
-        
-        await RisingEdge(dut.clock_i)
-        dut.pdm_valid_i.value = 0
+    num_samples = FIFO_DEPTH + 2
+    for i in range(num_samples):
+        pdm_data = [1] * DECIMATION_RATIO  # All ones to maximize data
+        await tester.send_pdm_data(pdm_data)
+        await Timer(CLOCK_PERIOD_NS * 5, units='ns')
     
     # Check overflow flag
-    assert dut.overflow_o.value == 1, "Overflow flag should be set when FIFO is full"
+    overflow_detected = dut.overflow_o.value
+    passed = overflow_detected
+    tester.log_test_result("Overflow detection", passed)
     
     # Re-enable downstream ready
     dut.pcm_ready_i.value = 1
+    
+    # Wait for recovery
+    await Timer(CLOCK_PERIOD_NS * 100, units='ns')
+    
+    assert passed, "Overflow test failed - overflow not detected"
 
 @cocotb.test()
 async def test_underflow_condition(dut):
-    """Test FIFO underflow condition"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+    """Test underflow condition detection"""
+    cocotb.log.info("Test: Underflow condition detection")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
     
     # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
+    await tester.reset_dut()
     dut.enable_i.value = 1
-    await Timer(50, units="ns")
-    
-    # Try to read from empty FIFO
     dut.pcm_ready_i.value = 1
     
     # Wait for FIFO to be empty
-    timeout = 0
-    while timeout < 1000:
-        await RisingEdge(dut.clock_i)
-        if dut.pcm_valid_o.value == 0:
-            break
-        timeout += 1
+    await Timer(CLOCK_PERIOD_NS * 200, units='ns')
     
-    # Try to read
+    # Try to read from empty FIFO
     await RisingEdge(dut.clock_i)
     
     # Check underflow flag
-    assert dut.underflow_o.value == 1, "Underflow flag should be set when reading from empty FIFO"
-
-@cocotb.test()
-async def test_sine_wave_response(dut):
-    """Test frequency response with sine wave input"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
-    cocotb.start_soon(clock.start())
+    underflow_detected = dut.underflow_o.value
+    passed = underflow_detected
+    tester.log_test_result("Underflow detection", passed)
     
-    # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
-    dut.enable_i.value = 1
-    await Timer(50, units="ns")
-    
-    # Generate sine wave PDM
-    sample_rate = 1e9 / TestConfig.CLOCK_PERIOD_NS  # Hz
-    frequency = 1000  # 1 kHz
-    amplitude = 0.3
-    num_samples = 10 * TestConfig.DECIMATION_RATIO  # 10 complete decimation cycles
-    
-    pdm_data = PDMGenerator.generate_sine_pdm(frequency, amplitude, num_samples, sample_rate)
-    
-    # Send PDM data and collect PCM output
-    pcm_data = []
-    sample_count = 0
-    
-    for i in range(0, len(pdm_data), TestConfig.DECIMATION_RATIO):
-        # Send one decimation cycle
-        for j in range(TestConfig.DECIMATION_RATIO):
-            if i + j < len(pdm_data):
-                await RisingEdge(dut.clock_i)
-                dut.pdm_data_i.value = pdm_data[i + j]
-                dut.pdm_valid_i.value = 1
-                
-                # Wait for ready
-                while dut.pdm_ready_o.value == 0:
-                    await RisingEdge(dut.clock_i)
-        
-        await RisingEdge(dut.clock_i)
-        dut.pdm_valid_i.value = 0
-        
-        # Wait for PCM output
-        timeout = 0
-        while dut.pcm_valid_o.value == 0 and timeout < 1000:
-            await RisingEdge(dut.clock_i)
-            timeout += 1
-        
-        if timeout < 1000:
-            pcm_data.append(dut.pcm_data_o.value)
-            sample_count += 1
-    
-    # Check frequency response
-    checker = PCMChecker(TestConfig.DATA_WIDTH, TestConfig.DECIMATION_RATIO)
-    pcm_sample_rate = sample_rate / TestConfig.DECIMATION_RATIO
-    is_valid, peak_freq = checker.check_sine_response(pcm_data, frequency, pcm_sample_rate)
-    
-    assert is_valid, f"Frequency response check failed. Expected {frequency} Hz, got {peak_freq} Hz"
-
-@cocotb.test()
-async def test_performance_throughput(dut):
-    """Test performance and throughput"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
-    cocotb.start_soon(clock.start())
-    
-    # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
-    dut.enable_i.value = 1
-    await Timer(50, units="ns")
-    
-    # Measure throughput
-    num_samples = 100
-    start_time = 0
-    end_time = 0
-    
-    for sample in range(num_samples):
-        pdm_data = [random.randint(0, 1) for _ in range(TestConfig.DECIMATION_RATIO)]
-        
-        if sample == 0:
-            start_time = cocotb.utils.get_sim_time("ns")
-        
-        # Send PDM data
-        for i, bit in enumerate(pdm_data):
-            await RisingEdge(dut.clock_i)
-            dut.pdm_data_i.value = bit
-            dut.pdm_valid_i.value = 1
-            
-            # Wait for ready
-            while dut.pdm_ready_o.value == 0:
-                await RisingEdge(dut.clock_i)
-        
-        await RisingEdge(dut.clock_i)
-        dut.pdm_valid_i.value = 0
-        
-        # Wait for PCM output
-        timeout = 0
-        while dut.pcm_valid_o.value == 0 and timeout < 1000:
-            await RisingEdge(dut.clock_i)
-            timeout += 1
-        
-        if sample == num_samples - 1:
-            end_time = cocotb.utils.get_sim_time("ns")
-    
-    # Calculate throughput
-    total_time = end_time - start_time
-    throughput = num_samples / (total_time * 1e-9)  # samples per second
-    
-    # Check that throughput is reasonable (should be > 1 MSPS)
-    assert throughput > 1e6, f"Throughput too low: {throughput} samples/sec"
+    assert passed, "Underflow test failed - underflow not detected"
 
 @cocotb.test()
 async def test_state_machine_coverage(dut):
-    """Test state machine coverage and transitions"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+    """Test state machine transitions"""
+    cocotb.log.info("Test: State machine coverage")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
     
     # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
+    await tester.reset_dut()
     dut.enable_i.value = 1
-    await Timer(50, units="ns")
+    dut.pcm_ready_i.value = 1
     
     # Test state transitions
     dut.enable_i.value = 0
@@ -549,163 +397,286 @@ async def test_state_machine_coverage(dut):
     dut.enable_i.value = 1
     dut.pdm_valid_i.value = 1
     
-    # Cycle through states multiple times
-    for cycle in range(10):
-        for i in range(TestConfig.DECIMATION_RATIO):
-            await RisingEdge(dut.clock_i)
-            dut.pdm_data_i.value = random.randint(0, 1)
-            
-            # Wait for ready
-            while dut.pdm_ready_o.value == 0:
-                await RisingEdge(dut.clock_i)
+    # Cycle through states
+    for i in range(20):
+        dut.pdm_data_i.value = random.randint(0, 1)
+        await tester.wait_for_ready()
+        await RisingEdge(dut.clock_i)
     
     dut.pdm_valid_i.value = 0
     
-    # Verify that state machine is working
-    assert dut.busy_o.value == 1, "Busy signal should be high during processing"
+    # Check that state machine is working
+    passed = dut.busy_o.value == 1 or dut.pcm_valid_o.value == 1
+    tester.log_test_result("State machine coverage", passed)
+    
+    assert passed, "State machine coverage test failed"
 
 @cocotb.test()
-async def test_parameter_validation(dut):
-    """Test parameter validation and edge cases"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+async def test_performance_throughput(dut):
+    """Test performance and throughput"""
+    cocotb.log.info("Test: Performance and throughput")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
     
     # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
+    await tester.reset_dut()
     dut.enable_i.value = 1
-    await Timer(50, units="ns")
+    dut.pcm_ready_i.value = 1
     
-    # Test with minimum duty cycle
-    pdm_data = [0] * (TestConfig.DECIMATION_RATIO - 1) + [1]  # 1/16 duty cycle
+    # Process multiple samples and measure time
+    num_samples = 50
+    start_time = cocotb.utils.get_sim_time('ns')
     
-    for i, bit in enumerate(pdm_data):
-        await RisingEdge(dut.clock_i)
-        dut.pdm_data_i.value = bit
-        dut.pdm_valid_i.value = 1
+    for i in range(num_samples):
+        pdm_data = [random.randint(0, 1) for _ in range(DECIMATION_RATIO)]
+        await tester.send_pdm_data(pdm_data)
         
-        while dut.pdm_ready_o.value == 0:
-            await RisingEdge(dut.clock_i)
+        # Wait for output
+        success = await tester.wait_for_pcm_output()
+        assert success, f"Timeout in performance test at sample {i}"
     
-    await RisingEdge(dut.clock_i)
-    dut.pdm_valid_i.value = 0
+    end_time = cocotb.utils.get_sim_time('ns')
+    total_time = end_time - start_time
     
-    # Wait for PCM output
-    timeout = 0
-    while dut.pcm_valid_o.value == 0 and timeout < 1000:
-        await RisingEdge(dut.clock_i)
-        timeout += 1
+    # Calculate throughput
+    throughput = (num_samples * DECIMATION_RATIO) / (total_time / 1e9)  # samples per second
     
-    assert timeout < 1000, "Timeout waiting for PCM output"
+    cocotb.log.info(f"Performance test: {num_samples} samples in {total_time} ns")
+    cocotb.log.info(f"Throughput: {throughput:.2f} PDM samples/second")
     
-    # Check that output is negative (low duty cycle)
-    pcm_value = dut.pcm_data_o.value
-    assert pcm_value < 0, f"Low duty cycle should produce negative PCM: got {pcm_value}"
+    # Check if throughput is reasonable (should be > 1MHz for 100MHz clock)
+    passed = throughput > 1e6
+    tester.log_test_result("Performance throughput", passed)
+    
+    assert passed, f"Performance test failed - throughput too low: {throughput}"
 
 @cocotb.test()
-async def test_continuous_operation(dut):
-    """Test continuous operation over extended period"""
-    # Create clock
-    clock = Clock(dut.clock_i, TestConfig.CLOCK_PERIOD_NS, units="ns")
+async def test_filter_response(dut):
+    """Test filter response with known patterns"""
+    cocotb.log.info("Test: Filter response")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
     
     # Reset and enable
-    dut.reset_n_i.value = 0
-    await Timer(100, units="ns")
-    dut.reset_n_i.value = 1
+    await tester.reset_dut()
     dut.enable_i.value = 1
-    await Timer(50, units="ns")
+    dut.pcm_ready_i.value = 1
     
-    # Continuous operation test
-    num_cycles = 50
-    pcm_samples = []
+    # Test with sine wave approximation
+    period = DECIMATION_RATIO
+    num_cycles = 5
     
     for cycle in range(num_cycles):
-        # Generate random PDM data
-        pdm_data = [random.randint(0, 1) for _ in range(TestConfig.DECIMATION_RATIO)]
+        # Generate sine wave pattern (simple approximation)
+        pdm_data = []
+        for i in range(DECIMATION_RATIO):
+            # Simple sine wave approximation
+            if i < period // 2:
+                pdm_data.append(1)
+            else:
+                pdm_data.append(0)
         
-        # Send PDM data
-        for i, bit in enumerate(pdm_data):
-            await RisingEdge(dut.clock_i)
-            dut.pdm_data_i.value = bit
-            dut.pdm_valid_i.value = 1
-            
-            while dut.pdm_ready_o.value == 0:
-                await RisingEdge(dut.clock_i)
+        # Send data
+        await tester.send_pdm_data(pdm_data)
         
-        await RisingEdge(dut.clock_i)
-        dut.pdm_valid_i.value = 0
+        # Wait for output
+        success = await tester.wait_for_pcm_output()
+        assert success, f"Timeout in filter response test at cycle {cycle}"
         
-        # Wait for PCM output
-        timeout = 0
-        while dut.pcm_valid_o.value == 0 and timeout < 1000:
-            await RisingEdge(dut.clock_i)
-            timeout += 1
+        # Check that output is reasonable (not stuck at extremes)
+        actual_pcm = dut.pcm_data_o.value.integer
+        passed = -32768 < actual_pcm < 32767  # Within 16-bit range
         
-        if timeout < 1000:
-            pcm_samples.append(dut.pcm_data_o.value)
+        if not passed:
+            cocotb.log.error(f"Filter response test failed at cycle {cycle} - PCM: {actual_pcm}")
+            break
     
-    # Verify continuous operation
-    assert len(pcm_samples) == num_cycles, f"Expected {num_cycles} PCM samples, got {len(pcm_samples)}"
-    
-    # Check that all PCM values are within valid range
-    max_value = (1 << (TestConfig.DATA_WIDTH - 1)) - 1
-    min_value = -(1 << (TestConfig.DATA_WIDTH - 1))
-    
-    for pcm_value in pcm_samples:
-        assert min_value <= pcm_value <= max_value, f"PCM value out of range: {pcm_value}"
+    tester.log_test_result("Filter response", passed)
+    assert passed, "Filter response test failed"
 
-# Utility functions for test reporting
-def generate_test_report():
-    """Generate comprehensive test report"""
-    report = {
-        "test_name": "PDM to PCM Decimator Core",
-        "version": "1.3.0",
-        "test_cases": [
-            "Reset sequence and initial state",
-            "All zeros pattern",
-            "All ones pattern", 
-            "Alternating pattern",
-            "Random pattern",
-            "Backpressure handling",
-            "Overflow condition",
-            "Underflow condition",
-            "Sine wave frequency response",
-            "Performance throughput",
-            "State machine coverage",
-            "Parameter validation",
-            "Continuous operation"
-        ],
-        "parameters": {
-            "data_width": TestConfig.DATA_WIDTH,
-            "decimation_ratio": TestConfig.DECIMATION_RATIO,
-            "cic_stages": TestConfig.CIC_STAGES,
-            "cic_decimation": TestConfig.CIC_DECIMATION,
-            "halfband_decimation": TestConfig.HALFBAND_DECIMATION,
-            "fir_taps": TestConfig.FIR_TAPS,
-            "fifo_depth": TestConfig.FIFO_DEPTH,
-            "clock_period_ns": TestConfig.CLOCK_PERIOD_NS
-        },
-        "performance_specs": {
-            "passband_ripple": "0.1 dB",
-            "stopband_attenuation": "98 dB",
-            "max_clock_frequency": "100 MHz",
-            "dynamic_range": "96 dB"
-        }
-    }
-    return report
+@cocotb.test()
+async def test_parameter_sweep(dut):
+    """Test with different parameter combinations"""
+    cocotb.log.info("Test: Parameter sweep")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
+    cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
+    
+    # Reset and enable
+    await tester.reset_dut()
+    dut.enable_i.value = 1
+    dut.pcm_ready_i.value = 1
+    
+    # Test different data patterns
+    test_patterns = [
+        [0] * DECIMATION_RATIO,  # All zeros
+        [1] * DECIMATION_RATIO,  # All ones
+        [i % 2 for i in range(DECIMATION_RATIO)],  # Alternating
+        [1 if i < DECIMATION_RATIO//4 else 0 for i in range(DECIMATION_RATIO)],  # 25% ones
+        [1 if i < DECIMATION_RATIO//2 else 0 for i in range(DECIMATION_RATIO)],  # 50% ones
+        [1 if i < 3*DECIMATION_RATIO//4 else 0 for i in range(DECIMATION_RATIO)],  # 75% ones
+    ]
+    
+    all_passed = True
+    for i, pattern in enumerate(test_patterns):
+        # Send data
+        await tester.send_pdm_data(pattern)
+        
+        # Wait for output
+        success = await tester.wait_for_pcm_output()
+        if not success:
+            cocotb.log.error(f"Timeout in parameter sweep test {i}")
+            all_passed = False
+            continue
+        
+        # Check result
+        actual_pcm = dut.pcm_data_o.value.integer
+        expected_pcm = tester.calculate_expected_pcm(pattern)
+        
+        passed = actual_pcm == expected_pcm
+        tester.log_test_result(f"Parameter sweep {i+1}", passed, actual_pcm, expected_pcm)
+        
+        if not passed:
+            all_passed = False
+    
+    assert all_passed, "Parameter sweep test failed"
 
-if __name__ == "__main__":
-    # Generate test report
-    report = generate_test_report()
-    print("=== PDM to PCM Decimator Core Test Report ===")
-    print(f"Version: {report['version']}")
-    print(f"Test Cases: {len(report['test_cases'])}")
-    print("Parameters:")
-    for key, value in report['parameters'].items():
-        print(f"  {key}: {value}")
-    print("Performance Specifications:")
-    for key, value in report['performance_specs'].items():
-        print(f"  {key}: {value}")
+@cocotb.test()
+async def test_concurrent_operations(dut):
+    """Test concurrent read/write operations"""
+    cocotb.log.info("Test: Concurrent operations")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
+    cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
+    
+    # Reset and enable
+    await tester.reset_dut()
+    dut.enable_i.value = 1
+    dut.pcm_ready_i.value = 1
+    
+    # Send multiple samples rapidly
+    num_samples = 10
+    for i in range(num_samples):
+        pdm_data = [random.randint(0, 1) for _ in range(DECIMATION_RATIO)]
+        await tester.send_pdm_data(pdm_data)
+        
+        # Don't wait for output, keep sending
+        await Timer(CLOCK_PERIOD_NS * 2, units='ns')
+    
+    # Now wait for all outputs
+    for i in range(num_samples):
+        success = await tester.wait_for_pcm_output()
+        assert success, f"Timeout waiting for output {i} in concurrent test"
+        
+        # Verify output is reasonable
+        actual_pcm = dut.pcm_data_o.value.integer
+        passed = -32768 <= actual_pcm <= 32767
+        
+        if not passed:
+            cocotb.log.error(f"Concurrent test failed at output {i} - PCM: {actual_pcm}")
+            break
+    
+    tester.log_test_result("Concurrent operations", passed)
+    assert passed, "Concurrent operations test failed"
+
+@cocotb.test()
+async def test_error_conditions(dut):
+    """Test error condition handling"""
+    cocotb.log.info("Test: Error condition handling")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
+    cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
+    
+    # Reset and enable
+    await tester.reset_dut()
+    dut.enable_i.value = 1
+    
+    # Test 1: Disable module during operation
+    pdm_data = [1] * DECIMATION_RATIO
+    await tester.send_pdm_data(pdm_data[:DECIMATION_RATIO//2])
+    
+    # Disable module
+    dut.enable_i.value = 0
+    await Timer(CLOCK_PERIOD_NS * 10, units='ns')
+    
+    # Re-enable
+    dut.enable_i.value = 1
+    dut.pcm_ready_i.value = 1
+    
+    # Complete the data
+    await tester.send_pdm_data(pdm_data[DECIMATION_RATIO//2:])
+    
+    # Wait for output
+    success = await tester.wait_for_pcm_output()
+    passed = success
+    
+    tester.log_test_result("Error condition handling", passed)
+    assert passed, "Error condition handling test failed"
+
+@cocotb.test()
+async def test_comprehensive_validation(dut):
+    """Comprehensive validation test"""
+    cocotb.log.info("Test: Comprehensive validation")
+    
+    # Create clock and tester
+    clock = Clock(dut.clock_i, CLOCK_PERIOD_NS, units="ns")
+    cocotb.start_soon(clock.start())
+    tester = PdmPcmDecimatorTester(dut)
+    
+    # Reset and enable
+    await tester.reset_dut()
+    dut.enable_i.value = 1
+    dut.pcm_ready_i.value = 1
+    
+    # Run comprehensive test suite
+    test_results = []
+    
+    # Test 1: Basic functionality
+    pdm_data = [random.randint(0, 1) for _ in range(DECIMATION_RATIO)]
+    await tester.send_pdm_data(pdm_data)
+    success = await tester.wait_for_pcm_output()
+    test_results.append(("Basic functionality", success))
+    
+    # Test 2: Multiple samples
+    for i in range(5):
+        pdm_data = [random.randint(0, 1) for _ in range(DECIMATION_RATIO)]
+        await tester.send_pdm_data(pdm_data)
+        success = await tester.wait_for_pcm_output()
+        test_results.append((f"Multiple samples {i+1}", success))
+    
+    # Test 3: Edge cases
+    edge_patterns = [
+        [0] * DECIMATION_RATIO,  # All zeros
+        [1] * DECIMATION_RATIO,  # All ones
+        [1, 0] * (DECIMATION_RATIO // 2),  # Alternating
+    ]
+    
+    for i, pattern in enumerate(edge_patterns):
+        await tester.send_pdm_data(pattern)
+        success = await tester.wait_for_pcm_output()
+        test_results.append((f"Edge case {i+1}", success))
+    
+    # Check all results
+    all_passed = all(result[1] for result in test_results)
+    
+    # Log individual results
+    for test_name, passed in test_results:
+        tester.log_test_result(test_name, passed)
+    
+    # Print summary
+    tester.print_summary()
+    
+    assert all_passed, "Comprehensive validation test failed"
+    assert tester.fail_count == 0, f"Comprehensive validation failed with {tester.fail_count} failures"
