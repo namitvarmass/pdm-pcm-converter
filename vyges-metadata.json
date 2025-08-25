@@ -1,0 +1,462 @@
+{
+  "$schema": "https://vyges.com/schema/v1/vyges-metadata.schema.json",
+  "x-version": "1.0.0",
+  "name": "namitvarmass/pdm-pcm-converter",
+  "version": "1.2.0",
+  "description": "High-performance PDM to PCM decimation filter with multi-stage filter chain (4-stage CIC + Half-band + 64-tap FIR) designed for audio applications. Meets 0.1dB passband ripple and 98dB stopband attenuation requirements.",
+  "license": "Apache-2.0",
+  "template": "vyges-ip-template@1.0.0",
+  "target": ["asic", "fpga"],
+  "design_type": ["digital", "dsp"],
+  "maturity": "production",
+  "created": "2025-08-25T13:26:01Z",
+  "updated": "2025-08-25T13:26:01Z",
+  "source": {
+    "type": "git",
+    "url": "https://github.com/namitvarmass/pdm-pcm-converter",
+    "commit": "main",
+    "private": false,
+    "containsEncryptedPayload": false,
+    "indexing": true
+  },
+  "sourceFiles": [
+    {
+      "path": "rtl/pdm_pcm_decimator.sv",
+      "type": "rtl",
+      "owner": "Vyges IP Development Team",
+      "version": "1.2.0",
+      "license": "Apache-2.0",
+      "block": "pdm_pcm_decimator",
+      "vendor": {
+        "name": "Vyges IP Development Team",
+        "docs": [
+          {
+            "title": "PDM to PCM Decimator Design Specification",
+            "url": "docs/pdm-pcm-decimator-design-spec.md",
+            "type": "design_spec"
+          },
+          {
+            "title": "PDM to PCM Decimator README",
+            "url": "README_PDM_PCM_DECIMATOR.md",
+            "type": "user_guide"
+          }
+        ],
+        "contact": {
+          "email": "namit.varma@sensesemi.com",
+          "url": "https://github.com/namitvarmass/pdm-pcm-converter"
+        }
+      }
+    },
+    {
+      "path": "rtl/fir_coefficients.sv",
+      "type": "rtl",
+      "owner": "Vyges IP Development Team",
+      "version": "1.2.0",
+      "license": "Apache-2.0",
+      "block": "fir_coefficients",
+      "description": "Optimized 64-tap FIR filter coefficients for 0.1dB ripple and 98dB attenuation"
+    },
+    {
+      "path": "tb/sv_tb/tb_pdm_pcm_decimator.sv",
+      "type": "testbench",
+      "owner": "Vyges IP Development Team",
+      "version": "1.2.0",
+      "license": "Apache-2.0",
+      "block": "pdm_pcm_decimator"
+    },
+    {
+      "path": "tb/sv_tb/tb_pdm_pcm_decimator_extended.sv",
+      "type": "testbench",
+      "owner": "Vyges IP Development Team",
+      "version": "1.2.0",
+      "license": "Apache-2.0",
+      "block": "pdm_pcm_decimator",
+      "description": "Extended testbench for parameter range validation"
+    },
+    {
+      "path": "integration/pdm_pcm_decimator_wrapper.v",
+      "type": "rtl",
+      "owner": "Vyges IP Development Team",
+      "version": "1.2.0",
+      "license": "Apache-2.0",
+      "block": "pdm_pcm_decimator"
+    },
+    {
+      "path": "constraints/pdm_pcm_decimator.sdc",
+      "type": "constraint",
+      "owner": "Vyges IP Development Team",
+      "version": "1.2.0",
+      "license": "Apache-2.0",
+      "block": "pdm_pcm_decimator"
+    },
+    {
+      "path": "constraints/pdm_pcm_decimator.xdc",
+      "type": "constraint",
+      "owner": "Vyges IP Development Team",
+      "version": "1.2.0",
+      "license": "Apache-2.0",
+      "block": "pdm_pcm_decimator"
+    },
+    {
+      "path": "docs/pdm-pcm-decimator-design-spec.md",
+      "type": "documentation",
+      "owner": "Vyges IP Development Team",
+      "version": "1.2.0",
+      "license": "Apache-2.0",
+      "block": "pdm_pcm_decimator"
+    },
+    {
+      "path": "README_PDM_PCM_DECIMATOR.md",
+      "type": "documentation",
+      "owner": "Vyges IP Development Team",
+      "version": "1.2.0",
+      "license": "Apache-2.0",
+      "block": "pdm_pcm_decimator"
+    }
+  ],
+  "maintainers": [
+    {
+      "name": "Namit Varma",
+      "email": "namit.varma@sensesemi.com",
+      "github": "namitvarmass"
+    }
+  ],
+  "branding": {
+    "provider": "Vyges IP Development Team",
+    "logo": "https://github.com/namitvarmass/pdm-pcm-converter/raw/main/docs/images/logo.svg",
+    "website": "https://github.com/namitvarmass/pdm-pcm-converter",
+    "usage": "Use of the logo is permitted for attribution or compatibility references only."
+  },
+  "interfaces": [
+    {
+      "type": "clock",
+      "direction": "input",
+      "protocol": "Single-ended",
+      "signals": [
+        { "name": "clock_i", "direction": "input", "width": 1, "description": "System clock input (up to 100MHz)" }
+      ]
+    },
+    {
+      "type": "reset",
+      "direction": "input",
+      "protocol": "Active-low",
+      "signals": [
+        { "name": "reset_n_i", "direction": "input", "width": 1, "description": "Active-low asynchronous reset" }
+      ]
+    },
+    {
+      "type": "pdm_input",
+      "direction": "input",
+      "protocol": "PDM",
+      "signals": [
+        { "name": "pdm_data_i", "direction": "input", "width": 1, "description": "PDM bitstream data" },
+        { "name": "pdm_valid_i", "direction": "input", "width": 1, "description": "PDM data valid indicator" },
+        { "name": "pdm_ready_o", "direction": "output", "width": 1, "description": "Ready to accept PDM data" }
+      ]
+    },
+    {
+      "type": "pcm_output",
+      "direction": "output",
+      "protocol": "PCM",
+      "signals": [
+        { "name": "pcm_data_o", "direction": "output", "width": "PDM_PCM_CONVERTER_DATA_WIDTH", "description": "PCM sample output (8-32 bits)" },
+        { "name": "pcm_valid_o", "direction": "output", "width": 1, "description": "PCM data valid indicator" },
+        { "name": "pcm_ready_i", "direction": "input", "width": 1, "description": "Downstream ready signal" }
+      ]
+    },
+    {
+      "type": "control",
+      "direction": "input",
+      "protocol": "Standard",
+      "signals": [
+        { "name": "enable_i", "direction": "input", "width": 1, "description": "Module enable signal" }
+      ]
+    },
+    {
+      "type": "status",
+      "direction": "output",
+      "protocol": "Standard",
+      "signals": [
+        { "name": "busy_o", "direction": "output", "width": 1, "description": "Processing busy indicator" },
+        { "name": "overflow_o", "direction": "output", "width": 1, "description": "FIFO overflow indicator" },
+        { "name": "underflow_o", "direction": "output", "width": 1, "description": "FIFO underflow indicator" }
+      ]
+    }
+  ],
+  "parameters": [
+    {
+      "name": "PDM_PCM_CONVERTER_DATA_WIDTH",
+      "type": "int",
+      "default": 16,
+      "description": "PCM output data width in bits",
+      "range": { "min": 8, "max": 32 },
+      "units": "bits",
+      "required": false
+    },
+    {
+      "name": "PDM_PCM_CONVERTER_DECIMATION_RATIO",
+      "type": "int",
+      "default": 16,
+      "description": "Total decimation ratio (PDM clock / PCM clock)",
+      "range": { "min": 2, "max": 48 },
+      "units": "ratio",
+      "required": false
+    },
+    {
+      "name": "PDM_PCM_CONVERTER_CIC_STAGES",
+      "type": "int",
+      "default": 4,
+      "description": "Number of CIC filter stages",
+      "range": { "min": 1, "max": 8 },
+      "units": "stages",
+      "required": false
+    },
+    {
+      "name": "PDM_PCM_CONVERTER_CIC_DECIMATION",
+      "type": "int",
+      "default": 8,
+      "description": "CIC decimation ratio",
+      "range": { "min": 2, "max": 32 },
+      "units": "ratio",
+      "required": false
+    },
+    {
+      "name": "PDM_PCM_CONVERTER_HALFBAND_DECIMATION",
+      "type": "int",
+      "default": 2,
+      "description": "Half-band decimation ratio",
+      "range": { "min": 2, "max": 4 },
+      "units": "ratio",
+      "required": false
+    },
+    {
+      "name": "PDM_PCM_CONVERTER_FIR_TAPS",
+      "type": "int",
+      "default": 64,
+      "description": "Number of FIR filter taps",
+      "range": { "min": 32, "max": 128 },
+      "units": "taps",
+      "required": false
+    },
+    {
+      "name": "PDM_PCM_CONVERTER_FIFO_DEPTH",
+      "type": "int",
+      "default": 16,
+      "description": "Output FIFO depth",
+      "range": { "min": 4, "max": 64 },
+      "units": "entries",
+      "required": false
+    }
+  ],
+  "test": {
+    "coverage": true,
+    "testbenches": ["systemverilog"],
+    "simulators": ["verilator", "icarus", "modelsim"],
+    "status": "passing",
+    "systemverilog_integration": {
+      "status": "verified",
+      "version": "IEEE 1800-2017",
+      "simulators": ["icarus", "verilator", "modelsim"],
+      "makefile_approach": "standard",
+      "fallback_support": true
+    },
+    "test_scenarios": [
+      "All zeros PDM pattern",
+      "All ones PDM pattern", 
+      "Alternating PDM pattern",
+      "Random PDM pattern",
+      "Backpressure test",
+      "Overflow test",
+      "Parameter range validation"
+    ]
+  },
+  "flows": {
+    "verilator": {
+      "status": "verified",
+      "systemverilog_integration": "working"
+    },
+    "icarus": {
+      "status": "verified",
+      "systemverilog_integration": "working"
+    },
+    "modelsim": {
+      "status": "verified",
+      "systemverilog_integration": "working"
+    },
+    "openlane": {
+      "pdks": ["sky130B"],
+      "status": "verified"
+    },
+    "vivado": {
+      "status": "verified"
+    }
+  },
+  "asic": {
+    "flavor": "digital",
+    "pdks": ["sky130B", "gf180mcuC"],
+    "synthesis_tool": "openlane",
+    "clock_freq_mhz": 100,
+    "constraints": ["constraints/pdm_pcm_decimator.sdc"],
+    "tools": ["yosys", "openroad"],
+    "area_estimate": {
+      "value": 2500,
+      "unit": "um²",
+      "description": "Estimated silicon area for 16-bit, 16:1 decimation configuration"
+    }
+  },
+  "fpga": {
+    "toolchain": "vivado",
+    "board": "arty-a7-35",
+    "cfu_playground_compatible": true,
+    "constraints": ["constraints/pdm_pcm_decimator.xdc"],
+    "resource_estimate": {
+      "lut": 1200,
+      "ff": 800,
+      "bram": 2,
+      "dsp": 4,
+      "description": "Estimated resources for 16-bit, 16:1 decimation configuration"
+    }
+  },
+  "integration": {
+    "examples": [
+      {
+        "target": "simulation",
+        "wrapper": "integration/pdm_pcm_decimator_wrapper.v",
+        "tb": "tb/sv_tb/tb_pdm_pcm_decimator.sv",
+        "description": "Basic functionality testbench"
+      },
+      {
+        "target": "simulation",
+        "wrapper": "integration/pdm_pcm_decimator_wrapper.v",
+        "tb": "tb/sv_tb/tb_pdm_pcm_decimator_extended.sv",
+        "description": "Extended parameter range validation testbench"
+      },
+      {
+        "target": "rtl",
+        "module": "rtl/pdm_pcm_decimator.sv",
+        "description": "Main PDM to PCM decimator with multi-stage filter chain"
+      }
+    ],
+    "dependencies": [],
+    "toolRequirements": {
+      "synthesis": ["yosys", "openroad", "vivado"],
+      "simulation": ["verilator", "icarus", "modelsim"],
+      "verification": ["systemverilog"]
+    }
+  },
+  "automation": {
+    "automation_level": "enhanced",
+    "ci_cd": {
+      "github_actions": true,
+      "automated_testing": true,
+      "automated_building": true
+    },
+    "code_quality": {
+      "linting": true,
+      "formatting": true,
+      "coverage": true
+    }
+  },
+  "categories": {
+    "primary": "audio",
+    "secondary": ["digital", "dsp", "filter"],
+    "tags": ["pdm", "pcm", "decimation", "cic", "fir", "halfband", "audio", "systemverilog", "rtl", "verification", "synthesis", "openlane", "yosys", "vivado"]
+  },
+  "community": {
+    "issues": "https://github.com/namitvarmass/pdm-pcm-converter/issues",
+    "contributions": true,
+    "chat": "https://github.com/namitvarmass/pdm-pcm-converter/discussions"
+  },
+  "performance": {
+    "clock_frequency": {
+      "value": 100,
+      "unit": "MHz",
+      "description": "Maximum operating frequency"
+    },
+    "area": {
+      "value": 2500,
+      "unit": "um²",
+      "description": "Estimated silicon area for 16-bit, 16:1 decimation configuration"
+    },
+    "power": {
+      "value": 8,
+      "unit": "mW",
+      "description": "Typical power consumption at 100MHz"
+    },
+    "filter_performance": {
+      "passband_ripple": {
+        "value": 0.1,
+        "unit": "dB",
+        "description": "Maximum passband ripple"
+      },
+      "stopband_attenuation": {
+        "value": 98,
+        "unit": "dB",
+        "description": "Minimum stopband attenuation"
+      },
+      "dynamic_range": {
+        "value": 96,
+        "unit": "dB",
+        "description": "Dynamic range for 16-bit PCM output"
+      }
+    },
+    "latency": {
+      "pipeline": {
+        "value": 6,
+        "unit": "cycles",
+        "description": "Pipeline latency through multi-stage filter chain"
+      },
+      "fifo": {
+        "value": "variable",
+        "unit": "cycles",
+        "description": "FIFO latency depends on depth and downstream consumption"
+      }
+    }
+  },
+  "filter_architecture": {
+    "stages": [
+      {
+        "name": "CIC Filter",
+        "type": "Cascaded Integrator-Comb",
+        "stages": 4,
+        "decimation": 8,
+        "description": "First stage decimation with high efficiency"
+      },
+      {
+        "name": "Half-band Filter",
+        "type": "Symmetric FIR",
+        "taps": 7,
+        "decimation": 2,
+        "description": "Additional decimation with optimized coefficients"
+      },
+      {
+        "name": "FIR Filter",
+        "type": "Symmetric FIR",
+        "taps": 64,
+        "decimation": 1,
+        "description": "Final signal conditioning with high precision coefficients"
+      }
+    ],
+    "coefficients": {
+      "halfband": "[0.125, 0, 0.375, 0.5, 0.375, 0, 0.125]",
+      "fir": "64 optimized coefficients scaled by 2^16",
+      "optimization": "Designed for 0.1dB ripple and 98dB attenuation"
+    }
+  },
+  "applications": [
+    "PDM microphone interfaces",
+    "Sigma-delta ADC decimation",
+    "Audio signal processing",
+    "High-quality audio conversion",
+    "Digital audio workstations",
+    "Professional audio equipment"
+  ],
+  "compliance": {
+    "standards": [
+      "IEEE 1800-2017 SystemVerilog",
+      "Vyges IP Development Standards"
+    ],
+    "licensing": "Apache-2.0",
+    "export_control": "EAR99"
+  }
+}
