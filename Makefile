@@ -96,6 +96,24 @@ $(BUILD_DIR)/yosys/$(DESIGN_NAME).v: $(RTL_FILES)
 		-p "stat" \
 		-p "show -prefix $(BUILD_DIR)/yosys/$(DESIGN_NAME)"
 
+# Enhanced Yosys synthesis
+.PHONY: synth-yosys-enhanced
+synth-yosys-enhanced: $(BUILD_DIR)/yosys
+	@echo "Running enhanced Yosys synthesis..."
+	cd $(BUILD_DIR)/yosys && $(YOSYS) -s ../../scripts/synth_yosys_enhanced.tcl
+	@echo "Enhanced Yosys synthesis completed"
+
+# Yosys interactive sessions
+.PHONY: synth-yosys-interactive
+synth-yosys-interactive: $(BUILD_DIR)/yosys
+	@echo "Starting Yosys interactive session..."
+	cd $(BUILD_DIR)/yosys && $(YOSYS) -s ../../scripts/synth_yosys.tcl
+
+.PHONY: synth-yosys-enhanced-interactive
+synth-yosys-enhanced-interactive: $(BUILD_DIR)/yosys
+	@echo "Starting enhanced Yosys interactive session..."
+	cd $(BUILD_DIR)/yosys && $(YOSYS) -s ../../scripts/synth_yosys_enhanced.tcl
+
 #=============================================================================
 # OpenLane ASIC Flow
 #=============================================================================
@@ -197,6 +215,105 @@ coverage: sim-verilator
 		$(RTL_FILES) $(TB_FILES) \
 		-o $(DESIGN_NAME)_coverage
 
+#=============================================================================
+# Cocotb Testbench Targets
+#=============================================================================
+
+# Cocotb testbench directory
+COCOTB_DIR = tb/cocotb
+
+# Cocotb simulation
+.PHONY: cocotb-sim
+cocotb-sim:
+	@echo "Running cocotb simulation..."
+	cd $(COCOTB_DIR) && $(MAKE) sim
+
+# Cocotb regression testing
+.PHONY: cocotb-regression
+cocotb-regression:
+	@echo "Running cocotb regression test suite..."
+	cd $(COCOTB_DIR) && $(MAKE) regression
+
+# Cocotb quick test
+.PHONY: cocotb-quick
+cocotb-quick:
+	@echo "Running cocotb quick test suite..."
+	cd $(COCOTB_DIR) && $(MAKE) quick-test
+
+# Cocotb individual tests
+.PHONY: cocotb-test-reset
+cocotb-test-reset:
+	cd $(COCOTB_DIR) && $(MAKE) test-reset
+
+.PHONY: cocotb-test-zeros
+cocotb-test-zeros:
+	cd $(COCOTB_DIR) && $(MAKE) test-zeros
+
+.PHONY: cocotb-test-ones
+cocotb-test-ones:
+	cd $(COCOTB_DIR) && $(MAKE) test-ones
+
+.PHONY: cocotb-test-random
+cocotb-test-random:
+	cd $(COCOTB_DIR) && $(MAKE) test-random
+
+.PHONY: cocotb-test-sine
+cocotb-test-sine:
+	cd $(COCOTB_DIR) && $(MAKE) test-sine
+
+.PHONY: cocotb-test-throughput
+cocotb-test-throughput:
+	cd $(COCOTB_DIR) && $(MAKE) test-throughput
+
+# Cocotb coverage
+.PHONY: cocotb-coverage
+cocotb-coverage:
+	@echo "Running cocotb with coverage..."
+	cd $(COCOTB_DIR) && $(MAKE) coverage
+
+.PHONY: cocotb-coverage-html
+cocotb-coverage-html:
+	@echo "Generating cocotb HTML coverage report..."
+	cd $(COCOTB_DIR) && $(MAKE) coverage-html
+
+# Cocotb waveforms
+.PHONY: cocotb-waves
+cocotb-waves:
+	@echo "Running cocotb with waveform generation..."
+	cd $(COCOTB_DIR) && $(MAKE) waves
+
+.PHONY: cocotb-waves-gtkwave
+cocotb-waves-gtkwave:
+	@echo "Opening cocotb waveforms in GTKWave..."
+	cd $(COCOTB_DIR) && $(MAKE) waves-gtkwave
+
+# Cocotb test report
+.PHONY: cocotb-report
+cocotb-report:
+	@echo "Generating cocotb test report..."
+	cd $(COCOTB_DIR) && $(MAKE) test-report
+
+# Cocotb tool-specific targets
+.PHONY: cocotb-sim-icarus
+cocotb-sim-icarus:
+	cd $(COCOTB_DIR) && $(MAKE) sim-icarus
+
+.PHONY: cocotb-sim-verilator
+cocotb-sim-verilator:
+	cd $(COCOTB_DIR) && $(MAKE) sim-verilator
+
+.PHONY: cocotb-sim-questa
+cocotb-sim-questa:
+	cd $(COCOTB_DIR) && $(MAKE) sim-questa
+
+.PHONY: cocotb-sim-modelsim
+cocotb-sim-modelsim:
+	cd $(COCOTB_DIR) && $(MAKE) sim-modelsim
+
+.PHONY: cocotb-sim-vcs
+cocotb-sim-vcs:
+	cd $(COCOTB_DIR) && $(MAKE) sim-vcs
+
 # Linting
 .PHONY: lint
 lint:
@@ -272,6 +389,39 @@ install-deps:
 	@echo "  - OpenLane: https://github.com/The-OpenROAD-Project/OpenLane"
 	@echo "  - Vivado: https://www.xilinx.com/products/design-tools/vivado.html"
 
+# Setup cocotb environment
+.PHONY: setup-cocotb
+setup-cocotb:
+	@echo "Setting up cocotb environment..."
+	@if [ -f "scripts/setup_cocotb.sh" ]; then \
+		bash scripts/setup_cocotb.sh --dev; \
+	else \
+		echo "Error: setup_cocotb.sh not found"; \
+		exit 1; \
+	fi
+
+# Setup cocotb with virtual environment
+.PHONY: setup-cocotb-venv
+setup-cocotb-venv:
+	@echo "Setting up cocotb environment with virtual environment..."
+	@if [ -f "scripts/setup_cocotb.sh" ]; then \
+		bash scripts/setup_cocotb.sh --venv --dev; \
+	else \
+		echo "Error: setup_cocotb.sh not found"; \
+		exit 1; \
+	fi
+
+# Setup cocotb with test
+.PHONY: setup-cocotb-test
+setup-cocotb-test:
+	@echo "Setting up cocotb environment and running test..."
+	@if [ -f "scripts/setup_cocotb.sh" ]; then \
+		bash scripts/setup_cocotb.sh --dev --test; \
+	else \
+		echo "Error: setup_cocotb.sh not found"; \
+		exit 1; \
+	fi
+
 # Check tool availability
 .PHONY: check-tools
 check-tools:
@@ -296,8 +446,34 @@ help:
 	@echo "  sim-icarus       - Run Icarus simulation"
 	@echo "  waves            - Generate and view waveforms"
 	@echo ""
+	@echo "Cocotb Testbench Targets:"
+	@echo "  cocotb-sim       - Run cocotb simulation"
+	@echo "  cocotb-regression- Run full cocotb regression suite"
+	@echo "  cocotb-quick     - Run cocotb quick test suite"
+	@echo "  cocotb-coverage  - Run cocotb with coverage"
+	@echo "  cocotb-waves     - Run cocotb with waveforms"
+	@echo "  cocotb-report    - Generate cocotb test report"
+	@echo ""
+	@echo "Cocotb Individual Tests:"
+	@echo "  cocotb-test-reset     - Test reset sequence"
+	@echo "  cocotb-test-zeros     - Test all zeros pattern"
+	@echo "  cocotb-test-ones      - Test all ones pattern"
+	@echo "  cocotb-test-random    - Test random pattern"
+	@echo "  cocotb-test-sine      - Test sine wave response"
+	@echo "  cocotb-test-throughput- Test performance throughput"
+	@echo ""
+	@echo "Cocotb Tool-Specific:"
+	@echo "  cocotb-sim-icarus     - Run cocotb with Icarus"
+	@echo "  cocotb-sim-verilator  - Run cocotb with Verilator"
+	@echo "  cocotb-sim-questa     - Run cocotb with Questa"
+	@echo "  cocotb-sim-modelsim   - Run cocotb with ModelSim"
+	@echo "  cocotb-sim-vcs        - Run cocotb with VCS"
+	@echo ""
 	@echo "Synthesis Targets:"
-	@echo "  synth-yosys      - Run Yosys synthesis"
+	@echo "  synth-yosys              - Basic Yosys synthesis"
+	@echo "  synth-yosys-enhanced     - Enhanced Yosys synthesis"
+	@echo "  synth-yosys-interactive  - Interactive Yosys session"
+	@echo "  synth-yosys-enhanced-interactive - Interactive enhanced Yosys"
 	@echo ""
 	@echo "OpenLane ASIC Flow:"
 	@echo "  openlane         - Complete OpenLane flow"
@@ -317,6 +493,11 @@ help:
 	@echo "Documentation Targets:"
 	@echo "  docs             - Generate documentation"
 	@echo "  reports          - Generate reports"
+	@echo ""
+	@echo "Setup Targets:"
+	@echo "  setup-cocotb     - Setup cocotb environment"
+	@echo "  setup-cocotb-venv- Setup cocotb with virtual environment"
+	@echo "  setup-cocotb-test- Setup cocotb and run test"
 	@echo ""
 	@echo "Utility Targets:"
 	@echo "  clean            - Clean build artifacts"
